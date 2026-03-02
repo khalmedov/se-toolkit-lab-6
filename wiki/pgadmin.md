@@ -18,6 +18,7 @@
   - [Open the `Query Tool`](#open-the-query-tool)
   - [Run the query](#run-the-query)
   - [Copy the query data output](#copy-the-query-data-output)
+  - [Download the query data output](#download-the-query-data-output)
 - [`ERD Tool`](#erd-tool)
   - [Open the ERD for the database](#open-the-erd-for-the-database)
   - [View the ERD in crow's foot notation](#view-the-erd-in-crows-foot-notation)
@@ -212,6 +213,19 @@ Actions:
 4. Click `Copy` to copy the full table to the clipboard.
 
    <img alt="Data Output - select all" src="./images/pgadmin/data-output-copy.png" style="width:400px">
+
+### Download the query data output
+
+> [!NOTE]
+> The `<db-name>` is the name of the database that you run the [`SQL` query](./sql.md#sql-query) against.
+
+1. [Run the query against the database `<db-name>`](#run-the-query).
+2. Open the `Data Output` tab.
+3. Click `Save results to file`.
+
+   <img alt="Data output - save results to file" src="./images/pgadmin/data-output-save-results-to-file.png" style="width:400px">
+
+   A comma-separated [`CSV`](./file-formats.md#csv) file should be downloaded.
 
 ## `ERD Tool`
 
