@@ -15,7 +15,7 @@ import argparse
 load_dotenv('.env.agent.secret')
 
 # Configuration - используем OPENROUTER_API_KEY чтобы избежать конфликта
-OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+LLM_API_KEY = os.getenv('LLM_API_KEY')
 LLM_API_BASE = os.getenv('LLM_API_BASE')
 LLM_MODEL = os.getenv('LLM_MODEL')
 
