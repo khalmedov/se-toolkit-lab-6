@@ -8,6 +8,8 @@ import os
 import sys
 import json
 import requests
+import subprocess
+import shlex
 from dotenv import load_dotenv
 import argparse
 from pathlib import Path
@@ -63,6 +65,28 @@ TOOLS = [
                 "required": ["path"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_command",
+            "description": "Run a system command on the VM (safe commands only)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "Command to execute (e.g., 'docker ps', 'ls -la', 'df -h')"
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Timeout in seconds",
+                        "default": 10
+                    }
+                },
+                "required": ["command"]
+            }
+        }
     }
 ]
 
@@ -106,6 +130,53 @@ def list_files(path):
     except Exception as e:
         return f"Error listing files: {str(e)}"
 
+def run_command(command, timeout=10):
+    """Execute system command with security checks"""
+    
+    # Security: список запрещенных команд/паттернов
+    forbidden_patterns = [
+        'rm -rf', 'sudo', 'dd', 'mkfs', 'format', 
+        '>', '>>', '|', ';', '&&', '||',
+        'chmod', 'chown', 'kill', 'pkill',
+        'reboot', 'shutdown', 'init', 'systemctl'
+    ]
+    
+    command_lower = command.lower()
+    for pattern in forbidden_patterns:
+        if pattern in command_lower:
+            return f"Error: Command contains forbidden pattern '{pattern}'. This command is blocked for security reasons."
+    
+    try:
+        # Разбиваем команду безопасно
+        args = shlex.split(command)
+        
+        # Выполняем с таймаутом
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False
+        )
+        
+        output = f"Exit code: {result.returncode}\n"
+        if result.stdout:
+            output += f"STDOUT:\n{result.stdout}\n"
+        if result.stderr:
+            output += f"STDERR:\n{result.stderr}\n"
+        
+        if result.returncode != 0:
+            output += f"Command failed with exit code {result.returncode}"
+        
+        return output
+        
+    except subprocess.TimeoutExpired:
+        return f"Error: Command timed out after {timeout} seconds"
+    except FileNotFoundError:
+        return f"Error: Command not found: '{command}'. The command may not be installed or available in PATH."
+    except Exception as e:
+        return f"Error executing command: {str(e)}"
+
 def execute_tool(tool_call):
     """Execute a tool and return result"""
     tool_name = tool_call['function']['name']
@@ -115,6 +186,8 @@ def execute_tool(tool_call):
         result = read_file(args['path'])
     elif tool_name == 'list_files':
         result = list_files(args['path'])
+    elif tool_name == 'run_command':
+        result = run_command(args['command'], args.get('timeout', 10))
     else:
         result = f"Error: Unknown tool {tool_name}"
     
@@ -155,24 +228,38 @@ def call_llm(messages, tools=None):
         )
         response.raise_for_status()
         return response.json()
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         print(f"Error calling LLM: {e}", file=sys.stderr)
+        if hasattr(e, 'response') and e.response:
+            print(f"Response: {e.response.text}", file=sys.stderr)
         sys.exit(1)
 
 def agentic_loop(question):
     """Run the agentic loop"""
-    system_prompt = """You are a documentation assistant for the SE Toolkit project.
-Use the available tools to help users find information.
-
-Rules:
-1. First, use list_files to explore the wiki directory
-2. Then use read_file to read relevant files
-3. Always include the source in your final answer (file path and section if applicable)
-4. Format source as: wiki/filename.md#section
+    system_prompt = """You are a system administrator assistant for the SE Toolkit project.
+You have access to tools that help you understand and manage the system.
 
 Available tools:
+- list_files(path): list directory contents
 - read_file(path): read a file
-- list_files(path): list directory contents"""
+- run_command(command, timeout): execute safe system commands
+
+Guidelines for run_command:
+1. Use it to check service status (docker ps, systemctl status)
+2. View logs (docker logs, journalctl)
+3. Monitor system (ps aux, df -h, free -m)
+4. NEVER use destructive commands (rm, sudo, dd, etc.) - they are blocked
+
+Always explain what you're doing and why.
+Include command output in your reasoning.
+If a command fails, suggest alternatives.
+For documentation questions, use read_file and list_files.
+For system questions, use run_command.
+
+Format source as:
+- For docs: wiki/filename.md#section
+- For system: "system" or command name
+"""
     
     messages = [
         {"role": "system", "content": system_prompt},
@@ -180,7 +267,7 @@ Available tools:
     ]
     
     tool_calls_history = []
-    max_iterations = 10
+    max_iterations = 15  # Увеличили для сложных системных запросов
     
     for iteration in range(max_iterations):
         print(f"DEBUG - Iteration {iteration + 1}", file=sys.stderr)
@@ -202,11 +289,15 @@ Available tools:
                 tool_result = execute_tool(tool_call)
                 messages.append(tool_result)
                 
-                # Record for output
+                # Record for output (truncate long results)
+                result_preview = tool_result['content']
+                if len(result_preview) > 300:
+                    result_preview = result_preview[:300] + "..."
+                
                 tool_calls_history.append({
                     "tool": tool_call['function']['name'],
                     "args": json.loads(tool_call['function']['arguments']),
-                    "result": tool_result['content'][:200] + "..." if len(tool_result['content']) > 200 else tool_result['content']
+                    "result": result_preview
                 })
         else:
             # No tool calls - final answer
@@ -222,6 +313,8 @@ Available tools:
                         if word.startswith('wiki/') and '.md' in word:
                             source = word.strip('.,;:')
                             break
+                elif 'docker' in line.lower() or 'command' in line.lower():
+                    source = "system"
             
             return {
                 'answer': answer,
@@ -237,8 +330,8 @@ Available tools:
     }
 
 def main():
-    parser = argparse.ArgumentParser(description='Documentation agent with tools')
-    parser.add_argument('question', help='Question about the project documentation')
+    parser = argparse.ArgumentParser(description='System administrator agent with tools')
+    parser.add_argument('question', help='Question about the system or documentation')
     args = parser.parse_args()
     
     print(f"Question: {args.question}", file=sys.stderr)

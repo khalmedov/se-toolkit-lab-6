@@ -11,3 +11,15 @@ git commit -m "feat: implement Task 2 - Documentation Agent
 
 # Запушим
 git push origin task-2-documentation-agent
+
+## System Commands (Task 3)
+
+### run_command tool
+- Выполняет безопасные системные команды
+- Поддерживает таймаут (по умолчанию 10 сек)
+- Запрещены опасные команды (rm -rf, sudo, и т.д.)
+
+Примеры:
+- `docker ps` - список контейнеров
+- `df -h` - свободное место на диске
+- `free -m` - использование памяти
