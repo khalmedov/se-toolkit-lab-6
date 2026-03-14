@@ -1,13 +1,13 @@
-# Agent Documentation
+# Добавим все файлы
+git add agent.py tests/test_agent_task2.py AGENT.md
 
-## Overview
-This agent is a simple CLI tool that connects to an LLM via OpenRouter API and returns answers in JSON format.
+# Закоммитим
+git commit -m "feat: implement Task 2 - Documentation Agent
 
-## LLM Provider
-- **Provider**: OpenRouter
-- **Model**: `arcee-ai/trinity-large-preview:free`
-- **Why**: Бесплатно, работает из РФ, не требует кредитной карты
+- Add read_file and list_files tools
+- Implement agentic loop with max 10 iterations
+- Add source field to output
+- Add 2 regression tests"
 
-## Configuration
-Create `.env.agent.secret` file with:
-
+# Запушим
+git push origin task-2-documentation-agent
