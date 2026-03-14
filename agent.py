@@ -199,25 +199,25 @@ def execute_tool(tool_call):
     }
 
 def call_llm(messages, tools=None):
-    """Call LLM with messages and tools"""
+    """Call LLM with messages and tools - SIMPLIFIED VERSION"""
     headers = {
         'Content-Type': 'application/json',
-        'Authorization': f'Bearer {LLM_API_KEY.strip()}',
-        'User-Agent': 'curl/8.5.0',
-        'HTTP-Referer': 'https://se-toolkit-lab-6.local',
-        'X-Title': 'SE Toolkit Lab 6 Agent'
+        'Authorization': f'Bearer {LLM_API_KEY.strip()}'
     }
     
     data = {
         'model': LLM_MODEL,
-        'messages': messages,
-        'temperature': 0.7,
-        'max_tokens': 2000
+        'messages': messages
     }
     
+    # Добавляем tools только если они есть и это не первый простой тест
     if tools:
         data['tools'] = tools
         data['tool_choice'] = 'auto'
+    
+    print(f"\n🔍 DEBUG - Request URL: {LLM_API_BASE}/chat/completions", file=sys.stderr)
+    print(f"🔍 DEBUG - Headers: {headers}", file=sys.stderr)
+    print(f"🔍 DEBUG - Data: {json.dumps(data)}", file=sys.stderr)
     
     try:
         response = requests.post(
@@ -226,12 +226,19 @@ def call_llm(messages, tools=None):
             json=data,
             timeout=60
         )
+        
+        print(f"📡 Response status: {response.status_code}", file=sys.stderr)
+        
+        if response.status_code != 200:
+            print(f"📡 Response body: {response.text}", file=sys.stderr)
+            
         response.raise_for_status()
         return response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"Error calling LLM: {e}", file=sys.stderr)
+        
+    except Exception as e:
+        print(f"❌ Error calling LLM: {e}", file=sys.stderr)
         if hasattr(e, 'response') and e.response:
-            print(f"Response: {e.response.text}", file=sys.stderr)
+            print(f"❌ Response text: {e.response.text}", file=sys.stderr)
         sys.exit(1)
 
 def agentic_loop(question):
@@ -267,7 +274,7 @@ Format source as:
     ]
     
     tool_calls_history = []
-    max_iterations = 15  # Увеличили для сложных системных запросов
+    max_iterations = 15
     
     for iteration in range(max_iterations):
         print(f"DEBUG - Iteration {iteration + 1}", file=sys.stderr)
