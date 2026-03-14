@@ -21,6 +21,8 @@ load_dotenv('.env.agent.secret')
 LLM_API_KEY = os.getenv('LLM_API_KEY')
 LLM_API_BASE = os.getenv('LLM_API_BASE')
 LLM_MODEL = os.getenv('LLM_MODEL')
+AGENT_API_BASE_URL = os.getenv('AGENT_API_BASE_URL', 'http://localhost:42011')
+LMS_API_KEY = os.getenv('LMS_API_KEY', 'my-secret-api-key')
 
 # Проверка наличия ключа
 if not LLM_API_KEY or not LLM_API_BASE or not LLM_MODEL:
@@ -85,6 +87,29 @@ TOOLS = [
                     }
                 },
                 "required": ["command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_api",
+            "description": "Query the LMS API endpoint to get data about items, stats, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "endpoint": {
+                        "type": "string",
+                        "description": "API endpoint (e.g., '/items/', '/items/stats?lab=lab-04', '/pipeline/sync')"
+                    },
+                    "method": {
+                        "type": "string",
+                        "enum": ["GET", "POST"],
+                        "description": "HTTP method",
+                        "default": "GET"
+                    }
+                },
+                "required": ["endpoint"]
             }
         }
     }
@@ -177,6 +202,35 @@ def run_command(command, timeout=10):
     except Exception as e:
         return f"Error executing command: {str(e)}"
 
+def query_api(endpoint, method="GET"):
+    """Query the LMS API endpoint"""
+    headers = {
+        'Authorization': f'Bearer {LMS_API_KEY}',
+        'Content-Type': 'application/json'
+    }
+    
+    url = f"{AGENT_API_BASE_URL}{endpoint}"
+    
+    try:
+        if method == "GET":
+            response = requests.get(url, headers=headers, timeout=10)
+        else:  # POST
+            response = requests.post(url, headers=headers, timeout=10)
+            
+        response.raise_for_status()
+        
+        # Pretty print JSON if possible
+        try:
+            data = response.json()
+            return json.dumps(data, indent=2, ensure_ascii=False)
+        except:
+            return response.text
+            
+    except requests.exceptions.RequestException as e:
+        return f"Error querying API: {str(e)}"
+    except Exception as e:
+        return f"Unexpected error: {str(e)}"
+
 def execute_tool(tool_call):
     """Execute a tool and return result"""
     tool_name = tool_call['function']['name']
@@ -188,6 +242,8 @@ def execute_tool(tool_call):
         result = list_files(args['path'])
     elif tool_name == 'run_command':
         result = run_command(args['command'], args.get('timeout', 10))
+    elif tool_name == 'query_api':
+        result = query_api(args['endpoint'], args.get('method', 'GET'))
     else:
         result = f"Error: Unknown tool {tool_name}"
     
@@ -199,7 +255,7 @@ def execute_tool(tool_call):
     }
 
 def call_llm(messages, tools=None):
-    """Call LLM with messages and tools - SIMPLIFIED VERSION"""
+    """Call LLM with messages and tools"""
     headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {LLM_API_KEY.strip()}'
@@ -210,14 +266,11 @@ def call_llm(messages, tools=None):
         'messages': messages
     }
     
-    # Добавляем tools только если они есть и это не первый простой тест
     if tools:
         data['tools'] = tools
         data['tool_choice'] = 'auto'
     
     print(f"\n🔍 DEBUG - Request URL: {LLM_API_BASE}/chat/completions", file=sys.stderr)
-    print(f"🔍 DEBUG - Headers: {headers}", file=sys.stderr)
-    print(f"🔍 DEBUG - Data: {json.dumps(data)}", file=sys.stderr)
     
     try:
         response = requests.post(
@@ -250,6 +303,7 @@ Available tools:
 - list_files(path): list directory contents
 - read_file(path): read a file
 - run_command(command, timeout): execute safe system commands
+- query_api(endpoint, method): query the LMS API for data
 
 Guidelines for run_command:
 1. Use it to check service status (docker ps, systemctl status)
@@ -257,15 +311,22 @@ Guidelines for run_command:
 3. Monitor system (ps aux, df -h, free -m)
 4. NEVER use destructive commands (rm, sudo, dd, etc.) - they are blocked
 
+Guidelines for query_api:
+1. Use it to get data about items, stats, etc.
+2. Common endpoints: /items/, /items/stats?lab=lab-04, /pipeline/sync
+3. Use GET for reading data, POST for actions
+
 Always explain what you're doing and why.
 Include command output in your reasoning.
 If a command fails, suggest alternatives.
 For documentation questions, use read_file and list_files.
 For system questions, use run_command.
+For API data, use query_api.
 
 Format source as:
 - For docs: wiki/filename.md#section
 - For system: "system" or command name
+- For API: "api"
 """
     
     messages = [
@@ -322,6 +383,8 @@ Format source as:
                             break
                 elif 'docker' in line.lower() or 'command' in line.lower():
                     source = "system"
+                elif 'api' in line.lower() or 'endpoint' in line.lower():
+                    source = "api"
             
             return {
                 'answer': answer,
