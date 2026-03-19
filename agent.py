@@ -22,7 +22,7 @@ LLM_API_BASE = os.getenv('LLM_API_BASE', '').rstrip('/')
 if LLM_API_BASE and not LLM_API_BASE.endswith('/v1'):
     LLM_API_BASE = LLM_API_BASE + '/v1'
 LLM_MODEL = os.getenv('LLM_MODEL')
-AGENT_API_BASE_URL = os.getenv('AGENT_API_BASE_URL', 'http://localhost:42011')
+AGENT_API_BASE_URL = os.getenv('AGENT_API_BASE_URL', 'http://localhost:42002')
 LMS_API_KEY = os.getenv('LMS_API_KEY')
 
 if not LLM_API_KEY or not LLM_API_BASE or not LLM_MODEL:
